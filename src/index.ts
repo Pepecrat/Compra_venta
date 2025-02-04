@@ -2,45 +2,48 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import dotenv from 'dotenv';
-import { validateConfig } from './config/aliexpress.config';
+import { errorHandler, notFoundHandler } from './utils/errorHandler';
+import aliexpressRoutes from './routes/aliexpress.routes';
 
 // Cargar variables de entorno
 dotenv.config();
 
-// Validar configuración
-try {
-    validateConfig();
-} catch (error) {
-    console.error('Configuration error:', error);
-    process.exit(1);
-}
-
 const app = express();
+const port = process.env.PORT || 3000;
 
 // Middleware
-app.use(helmet());
-app.use(cors());
-app.use(express.json());
+app.use(helmet()); // Seguridad
+app.use(cors()); // CORS
+app.use(express.json()); // Parser JSON
+app.use(express.urlencoded({ extended: true }));
 
-// Variables de entorno
-const PORT = process.env.PORT || 3000;
+// Rutas de la API
+const apiRouter = express.Router();
 
-// Rutas básicas
-app.get('/health', (req, res) => {
-    res.json({ status: 'OK', timestamp: new Date().toISOString() });
-});
-
-// Manejo de errores global
-app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
-    console.error(err.stack);
-    res.status(500).json({
-        error: 'Internal Server Error',
-        message: process.env.NODE_ENV === 'development' ? err.message : undefined
+// Health check
+apiRouter.get('/health', (req, res) => {
+    res.json({
+        status: 'ok',
+        timestamp: new Date().toISOString(),
+        uptime: process.uptime(),
+        environment: process.env.NODE_ENV || 'development'
     });
 });
 
-// Iniciar servidor
-app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-    console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+// Rutas de AliExpress
+apiRouter.use('/aliexpress', aliexpressRoutes);
+
+// Montar el router de la API
+app.use('/api', apiRouter);
+
+// Manejador para rutas no encontradas
+app.use(notFoundHandler);
+
+// Manejador de errores global
+app.use(errorHandler);
+
+// Iniciar el servidor
+app.listen(port, () => {
+    console.log(`🚀 Servidor corriendo en http://localhost:${port}`);
+    console.log(`📝 Ambiente: ${process.env.NODE_ENV || 'development'}`);
 }); 

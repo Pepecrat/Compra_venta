@@ -8,13 +8,42 @@ import {
     AliExpressAuthResponse,
     AliExpressError
 } from '../../types/aliexpress.types';
+import axios from 'axios';
+import { AppError } from '../../utils/errorHandler';
+
+export interface AliexpressProduct {
+    productId: string;
+    title: string;
+    price: {
+        current: number;
+        currency: string;
+    };
+    ratings: {
+        average: number;
+        count: number;
+    };
+    images: string[];
+    url: string;
+    shipping: {
+        cost: number;
+        time: string;
+    };
+}
 
 export class AliExpressService {
     private accessToken: string | null = null;
     private tokenExpiration: Date | null = null;
+    private readonly apiKey: string;
+    private readonly baseUrl: string;
 
     constructor() {
         this.validateConfig();
+        this.apiKey = process.env.ALIEXPRESS_API_KEY || '';
+        this.baseUrl = 'https://api.aliexpress.com/v2/';
+
+        if (!this.apiKey) {
+            throw new AppError(500, 'API Key de AliExpress no configurada');
+        }
     }
 
     private validateConfig() {
@@ -121,22 +150,58 @@ export class AliExpressService {
 
     // Métodos públicos para interactuar con la API
 
-    public async searchProducts(params: AliExpressSearchParams): Promise<AliExpressSearchResponse> {
-        const apiParams = {
-            method: 'aliexpress.ds.product.search',
-            ...this.transformSearchParams(params)
-        };
+    public async searchProducts(query: string, options: {
+        page?: number;
+        limit?: number;
+        minPrice?: number;
+        maxPrice?: number;
+        sort?: 'price_asc' | 'price_desc' | 'orders' | 'rating';
+    } = {}): Promise<AliexpressProduct[]> {
+        try {
+            const response = await axios.get(`${this.baseUrl}/products/search`, {
+                headers: {
+                    'Authorization': `Bearer ${this.apiKey}`
+                },
+                params: {
+                    q: query,
+                    page: options.page || 1,
+                    limit: options.limit || 20,
+                    min_price: options.minPrice,
+                    max_price: options.maxPrice,
+                    sort: options.sort
+                }
+            });
 
-        return await this.makeRequest<AliExpressSearchResponse>('', apiParams);
+            return response.data.products;
+        } catch (error) {
+            if (axios.isAxiosError(error)) {
+                throw new AppError(
+                    error.response?.status || 500,
+                    `Error al buscar productos en AliExpress: ${error.message}`
+                );
+            }
+            throw error;
+        }
     }
 
-    public async getProductDetails(productId: string): Promise<AliExpressProduct> {
-        const params = {
-            method: 'aliexpress.ds.product.get',
-            product_id: productId
-        };
+    public async getProductDetails(productId: string): Promise<AliexpressProduct> {
+        try {
+            const response = await axios.get(`${this.baseUrl}/product/${productId}`, {
+                headers: {
+                    'Authorization': `Bearer ${this.apiKey}`
+                }
+            });
 
-        return await this.makeRequest<AliExpressProduct>('', params);
+            return response.data;
+        } catch (error) {
+            if (axios.isAxiosError(error)) {
+                throw new AppError(
+                    error.response?.status || 500,
+                    `Error al obtener detalles del producto de AliExpress: ${error.message}`
+                );
+            }
+            throw error;
+        }
     }
 
     private transformSearchParams(params: AliExpressSearchParams): Record<string, string> {
